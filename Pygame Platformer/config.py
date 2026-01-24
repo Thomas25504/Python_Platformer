@@ -31,6 +31,11 @@ LEVEL_FILES = {
     3: "level3.txt",
     4: "level4.txt",
     5: "level5.txt",
+    6: "level6.txt",
+    7: "level7.txt",
+    8: "level8.txt",
+    9: "level9.txt",
+    10: "level10.txt",
 }
 
 # Game States

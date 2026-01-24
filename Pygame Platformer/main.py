@@ -66,25 +66,27 @@ def main():
     # NEW: unlock-all toggle
     unlock_all = False
 
-    # buttons
+    # Buttons (menu)
     btn_w, btn_h = 320, 60
     start_btn = pygame.Rect((SCREEN_W - btn_w)//2, 300, btn_w, btn_h)
     quit_btn = pygame.Rect((SCREEN_W - btn_w)//2, 380, btn_w, btn_h)
 
-    level_btns: dict[int, pygame.Rect] = {}
+    # Level select layout + pagination
+    levels_per_page = 5
+    current_page = 0
     base_y = 220
     gap = 70
-    for i in range(1, 6):
-        level_btns[i] = pygame.Rect((SCREEN_W - btn_w)//2, base_y + (i-1)*gap, btn_w, btn_h)
-
     back_btn = pygame.Rect(20, 20, 140, 45)
 
-    # unlock-all option button 
-    unlock_btn = pygame.Rect((SCREEN_W - btn_w)//2, 600, btn_w, 55)
+    def level_rect_for_index(idx_on_page: int) -> pygame.Rect:
+        y = base_y + idx_on_page * gap
+        return pygame.Rect((SCREEN_W - btn_w)//2, y, btn_w, btn_h)
 
-    # hover colors 
-    PANEL_HOVER = COLOR_PANEL_DARK
-    PANEL_DARK_HOVER = COLOR_PANEL
+    # unlock-all option button + page nav
+    unlock_btn = pygame.Rect((SCREEN_W - btn_w)//2, 600, btn_w, 55)
+    nav_w, nav_h = 140, 55
+    prev_btn = pygame.Rect(unlock_btn.x - nav_w - 30, 600, nav_w, nav_h)
+    next_btn = pygame.Rect(unlock_btn.right + 30, 600, nav_w, nav_h)
 
     def start_level(n: int):
         nonlocal current_level_num, level, player, camera, has_key, state
@@ -102,6 +104,8 @@ def main():
 
         max_level = len(LEVEL_FILES)
         unlocked_upto = compute_unlocked_upto(completed_levels, unlock_all, max_level)
+        page_count = max(1, (max_level + levels_per_page - 1) // levels_per_page)
+        current_page = min(current_page, page_count - 1)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -125,9 +129,17 @@ def main():
                     if event.key == pygame.K_RETURN:
                         state = STATE_LEVEL_SELECT
 
+                # Page navigation in Level Select
+                if state == STATE_LEVEL_SELECT:
+                    if event.key == pygame.K_RIGHT:
+                        current_page = min(current_page + 1, page_count - 1)
+                    elif event.key == pygame.K_LEFT:
+                        current_page = max(current_page - 1, 0)
+
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
-
+                
+                # Menu clicks
                 if state == STATE_MENU:
                     if start_btn.collidepoint(mx, my):
                         state = STATE_LEVEL_SELECT
@@ -143,9 +155,17 @@ def main():
                     elif unlock_btn.collidepoint(mx, my):
                         unlock_all = not unlock_all
 
+                    # page navigation buttons
+                    elif prev_btn.collidepoint(mx, my):
+                        current_page = max(current_page - 1, 0)
+                    elif next_btn.collidepoint(mx, my):
+                        current_page = min(current_page + 1, page_count - 1)
+
                     else:
-                        for n, rect in level_btns.items():
-                            # only allow click if unlocked
+                        start_n = current_page * levels_per_page + 1
+                        end_n = min(start_n + levels_per_page, max_level + 1)
+                        for idx, n in enumerate(range(start_n, end_n)):
+                            rect = level_rect_for_index(idx)
                             if rect.collidepoint(mx, my) and n <= unlocked_upto:
                                 start_level(n)
 
@@ -161,8 +181,8 @@ def main():
             draw_centered_text(screen, font_big, "BLOCK PLATFORMER", 140)
             draw_centered_text(screen, font, "Main Menu", 200, COLOR_HEADER)
 
-            draw_button_rect(screen, start_btn, COLOR_PANEL, PANEL_HOVER, mouse_pos, border_radius=12)
-            draw_button_rect(screen, quit_btn, COLOR_PANEL, PANEL_HOVER, mouse_pos, border_radius=12)
+            draw_button_rect(screen, start_btn, COLOR_PANEL, COLOR_PANEL_HOVER, mouse_pos, border_radius=12)
+            draw_button_rect(screen, quit_btn, COLOR_PANEL, COLOR_PANEL_HOVER, mouse_pos, border_radius=12)
             draw_centered_text(screen, font, "Start", start_btn.centery)
             draw_centered_text(screen, font, "Quit", quit_btn.centery)
 
@@ -175,45 +195,51 @@ def main():
         elif state == STATE_LEVEL_SELECT:
             draw_centered_text(screen, font_big, "LEVEL SELECT", 120)
 
-            draw_button_rect(screen, back_btn, COLOR_PANEL_DARK, PANEL_DARK_HOVER, mouse_pos, border_radius=10)
+            draw_button_rect(screen, back_btn, COLOR_PANEL_DARK, COLOR_PANEL_DARK_HOVER, mouse_pos, border_radius=10)
             screen.blit(font.render("Back", True, COLOR_TEXT), (back_btn.x + 35, back_btn.y + 10))
 
-            # Level buttons (locked unless previous complete)
-            for n, rect in level_btns.items():
+            # Determine page slice
+            start_n = current_page * levels_per_page + 1
+            end_n = min(start_n + levels_per_page, max_level + 1)
+
+            # Level buttons (page-based; show locked state if needed)
+            for idx, n in enumerate(range(start_n, end_n)):
+                rect = level_rect_for_index(idx)
                 is_unlocked = n <= unlocked_upto
                 is_done = n in completed_levels
 
                 if is_unlocked:
-                    draw_button_rect(screen, rect, COLOR_PANEL, PANEL_HOVER, mouse_pos, border_radius=12)
+                    draw_button_rect(screen, rect, COLOR_PANEL, COLOR_PANEL_HOVER, mouse_pos, border_radius=12)
                     label = f"Level {n}"
                     draw_centered_text(screen, font, label, rect.centery, COLOR_TEXT)
 
-                    # Draw checkmark on right side if completed
                     if is_done:
                         tick_center = (rect.right - 35, rect.centery)
-                        draw_checkmark(
-                            screen,
-                            tick_center,
-                            size=22,
-                            color=COLOR_EXIT_UNLOCKED if "COLOR_EXIT_UNLOCKED" in globals() else COLOR_TEXT,
-                            thickness=4
-                        )
+                        draw_checkmark(screen, tick_center, size=22, color=COLOR_EXIT_UNLOCKED, thickness=4)
                 else:
                     pygame.draw.rect(screen, COLOR_PANEL_DARK, rect, border_radius=12)
                     label = f"Level {n}  LOCKED"
                     draw_centered_text(screen, font, label, rect.centery, COLOR_TEXT_MUTED)
 
-                    # OPTIONAL: show a muted checkmark even if locked (if it was somehow completed)
                     if is_done:
                         tick_center = (rect.right - 35, rect.centery)
                         draw_checkmark(screen, tick_center, size=22, color=COLOR_TEXT_MUTED, thickness=4)
 
             # Unlock-all toggle button
             unlock_label = f"Unlock All Levels: {'ON' if unlock_all else 'OFF'}"
-            draw_button_rect(screen, unlock_btn, COLOR_PANEL_DARK, PANEL_DARK_HOVER, mouse_pos, border_radius=12)
+            draw_button_rect(screen, unlock_btn, COLOR_PANEL_DARK, COLOR_PANEL_DARK_HOVER, mouse_pos, border_radius=12)
             draw_centered_text(screen, font, unlock_label, unlock_btn.centery, COLOR_TEXT)
 
-            hint = f"Complete levels in order to unlock the next. (Unlocked: 1–{unlocked_upto})"
+            # Page controls
+            draw_button_rect(screen, prev_btn, COLOR_PANEL_DARK, COLOR_PANEL_DARK_HOVER, mouse_pos, border_radius=10)
+            draw_button_rect(screen, next_btn, COLOR_PANEL_DARK, COLOR_PANEL_DARK_HOVER, mouse_pos, border_radius=10)
+            screen.blit(font.render("Prev", True, COLOR_TEXT), (prev_btn.x + 28, prev_btn.y + 14))
+            screen.blit(font.render("Next", True, COLOR_TEXT), (next_btn.x + 26, next_btn.y + 14))
+
+            page_label = f"Page {current_page + 1} / {page_count}"
+            draw_centered_text(screen, font_small, page_label, prev_btn.centery - 30, COLOR_TEXT_MUTED)
+
+            hint = f"Use Prev/Next or Arrows to change pages. Unlocked: 1–{unlocked_upto}"
             draw_centered_text(screen, font_small, hint, 680, COLOR_TEXT_MUTED)
 
         elif state == STATE_PLAYING:
@@ -262,7 +288,7 @@ def main():
             draw_centered_text(screen, font, "You escaped with the key.", 290, COLOR_TEXT_MUTED)
             draw_centered_text(screen, font_small, "Press ENTER to return to Level Select (or ESC).", 350, COLOR_TEXT_MUTED)
 
-            draw_button_rect(screen, back_btn, COLOR_PANEL_DARK, PANEL_DARK_HOVER, mouse_pos, border_radius=10)
+            draw_button_rect(screen, back_btn, COLOR_PANEL_DARK, COLOR_PANEL_DARK_HOVER, mouse_pos, border_radius=10)
             screen.blit(font.render("Levels", True, COLOR_TEXT), (back_btn.x + 32, back_btn.y + 10))
 
         pygame.display.flip()
